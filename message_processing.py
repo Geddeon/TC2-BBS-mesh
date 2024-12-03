@@ -8,11 +8,12 @@ from command_handlers import (
     handle_channel_directory_command, handle_channel_directory_steps, handle_send_mail_command,
     handle_read_mail_command, handle_check_mail_command, handle_delete_mail_confirmation, handle_post_bulletin_command,
     handle_check_bulletin_command, handle_read_bulletin_command, handle_read_channel_command,
-    handle_post_channel_command, handle_list_channels_command, handle_quick_help_command
+    handle_post_channel_command, handle_list_channels_command, handle_quick_help_command,
+    handle_successful_authorization
 )
 from db_operations import add_bulletin, add_mail, delete_bulletin, delete_mail, get_db_connection, add_channel
 from js8call_integration import handle_js8call_command, handle_js8call_steps, handle_group_message_selection
-from utils import get_user_state, get_node_short_name, get_node_id_from_num, send_message
+from utils import is_user_authorized, authorize_user, get_user_state, get_node_short_name, get_node_id_from_num, send_message
 
 main_menu_handlers = {
     "q": handle_quick_help_command,
@@ -53,12 +54,22 @@ board_action_handlers = {
     "x": handle_help_command
 }
 
-def process_message(sender_id, message, interface, is_sync_message=False):
+def process_message(sender_id, message, interface, system_config:dict[str, any], is_sync_message=False):
     state = get_user_state(sender_id)
     message_lower = message.lower().strip()
     message_strip = message.strip()
 
     bbs_nodes = interface.bbs_nodes
+
+    # ignore unauthorised users if password is set
+    if system_config["password"] and not is_user_authorized(sender_id):
+        if message_strip == system_config["password"]:
+            authorize_user(sender_id)
+            handle_successful_authorization(sender_id, interface)
+            logging.info(f"Authorized user by password: {sender_id}")
+        else:
+            logging.info(f"Unauthorized request \"{message}\" by user: {sender_id}")
+        return
 
     # Handle repeated characters for single character commands using a prefix
     if len(message_lower) == 2 and message_lower[1] == 'x':
@@ -176,7 +187,7 @@ def process_message(sender_id, message, interface, is_sync_message=False):
                 handle_help_command(sender_id, interface)
 
 
-def on_receive(packet, interface):
+def on_receive(packet, interface, system_config:dict[str, any]):
     try:
         if 'decoded' in packet and packet['decoded']['portnum'] == 'TEXT_MESSAGE_APP':
             message_bytes = packet['decoded']['payload']
@@ -196,11 +207,11 @@ def on_receive(packet, interface):
 
             if sender_node_id in bbs_nodes:
                 if is_sync_message:
-                    process_message(sender_id, message_string, interface, is_sync_message=True)
+                    process_message(sender_id, message_string, interface, system_config, is_sync_message=True)
                 else:
                     logging.info("Ignoring non-sync message from known BBS node")
             elif to_id is not None and to_id != 0 and to_id != 255 and to_id == interface.myInfo.my_node_num:
-                process_message(sender_id, message_string, interface, is_sync_message=False)
+                process_message(sender_id, message_string, interface, system_config, is_sync_message=False)
             else:
                 logging.info("Ignoring message sent to group chat or from unknown node")
     except KeyError as e:

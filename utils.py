@@ -2,7 +2,13 @@ import logging
 import time
 
 user_states = {}
+authorized_users = []
 
+def authorize_user(user_id):
+    authorised_users.append(user_id)
+
+def is_user_authorized(user_id):
+    return user_id in authorised_users
 
 def update_user_state(user_id, state):
     user_states[user_id] = state

@@ -52,6 +52,9 @@ def build_menu(items, menu_name):
     return menu_str
 
 
+def handle_successful_authorization(sender_id, interface):
+    send_message("Succesfull authorization", sender_id, interface)
+
 def handle_help_command(sender_id, interface, menu_name=None):
     if menu_name:
         update_user_state(sender_id, {'command': 'MENU', 'menu': menu_name, 'step': 1})
